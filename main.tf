@@ -2,7 +2,7 @@
 resource "aws_vpc" "cloudcomputing" {
   cidr_block = "10.0.0.0/16"
 
-   tags = {
+  tags = {
     Name = "CloudComputingProject"
   }
 }
@@ -17,9 +17,9 @@ resource "aws_internet_gateway" "igw" {
 
 ## Create AWS Public Subnet
 resource "aws_subnet" "public_subnet" {
-  vpc_id     = aws_vpc.cloudcomputing.id
-  cidr_block = "10.0.1.0/24"
-  availability_zone = "us-east-2a"
+  vpc_id                  = aws_vpc.cloudcomputing.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "us-east-2a"
   map_public_ip_on_launch = true
 
   tags = {
@@ -29,9 +29,9 @@ resource "aws_subnet" "public_subnet" {
 
 ## Create AWS Private Subnet
 resource "aws_subnet" "private_subnet" {
-  vpc_id     = aws_vpc.cloudcomputing.id
-  cidr_block = "10.0.2.0/24"
-  availability_zone = "us-east-2b"
+  vpc_id                  = aws_vpc.cloudcomputing.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = "us-east-2b"
   map_public_ip_on_launch = false
 
   tags = {
@@ -41,9 +41,9 @@ resource "aws_subnet" "private_subnet" {
 
 ## Create AWS Elastic Ip
 resource "aws_eip" "natgateway_elastic_ip" {
-    tags = {
+  tags = {
     Name = "natgateway_elastic_ip_nat_gw"
-    }
+  }
 }
 
 ## Create NAT Gateway
@@ -61,7 +61,7 @@ resource "aws_nat_gateway" "nat_gateway" {
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.cloudcomputing.id
   tags = {
-    Name        = "private-route-table"
+    Name = "private-route-table"
   }
 }
 
@@ -70,7 +70,7 @@ resource "aws_route_table" "private" {
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.cloudcomputing.id
   tags = {
-    Name        = "public-route-table"
+    Name = "public-route-table"
   }
 }
 
@@ -81,7 +81,7 @@ resource "aws_route" "public_internet_gateway" {
   gateway_id             = aws_internet_gateway.igw.id
 }
 
-## Updating Public Private Gateway Association
+## Updating  Nat Gateway Association
 resource "aws_route" "private_nat_gateway" {
   route_table_id         = aws_route_table.private.id
   destination_cidr_block = "0.0.0.0/0"
@@ -101,50 +101,32 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-## Creation of AWS ELB Security Group
-resource "aws_security_group" "elb" {
-  name        = "elbflaskapp"
-  description = "Allow Traffic from ELB on 8443 port"
-  vpc_id      = aws_vpc.cloudcomputing.id
-
-  ingress {
-    description      = "Allow Traffic  on Port 5000"
-    from_port        = 8080
-    to_port          = 8080
-    protocol         = "tcp"
-    cidr_blocks      = ["0.0.0.0/0"]
-  }
-  egress {
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
-  }
-
-  tags = {
-    Name = "EC2 Instance Flask App"
-  }
-}
-
+## Creation of AWS EC2 Security Group
 resource "aws_security_group" "ec2instance" {
   name        = "ec2instanceflaskapp"
-  description = "Allow Traffic from ELB on 5000 port"
+  description = "Allow Traffic through internet"
   vpc_id      = aws_vpc.cloudcomputing.id
 
   ingress {
-    description      = "Allow Traffic  on Port 5000"
-    from_port        = 8080
-    to_port          = 8080
-    protocol         = "tcp"
-    security_groups  = [aws_security_group.elb.id]
+    description = "Allow Traffic  from flask app"
+    from_port   = 5003
+    to_port     = 5003
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
   ingress {
-    description      = "allow ssh access"
-    from_port        = 22
-    to_port          = 22
-    protocol         = "tcp"
-    cidr_blocks      = ["0.0.0.0/0"]
+    description = "allow ssh access"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    description = "Allow Traffic  from jenkins"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -160,26 +142,26 @@ resource "aws_security_group" "ec2instance" {
   }
 }
 
-
-## Creating AWS EC2 Instance
-module "ec2_instance" {
+## Creating AWS EC2 Instance for jenkins
+module "ec2_jenkins_instance" {
   source  = "terraform-aws-modules/ec2-instance/aws"
   version = "~> 3.0"
 
-  name = "Flask-App"
+  name = "Jenkins"
 
-  ami                    = "ami-089a545a9ed9893b6"
-  instance_type          = "t2.micro"
-  key_name               = "user1"
-  monitoring             = true
-  vpc_security_group_ids = [aws_security_group.ec2instance.id]
-  subnet_id              = aws_subnet.public_subnet.id
+  ami                         = "ami-089a545a9ed9893b6"
+  instance_type               = "t2.micro"
+  key_name                    = "user1"
+  monitoring                  = true
+  vpc_security_group_ids      = [aws_security_group.ec2instance.id]
+  subnet_id                   = aws_subnet.public_subnet.id
   associate_public_ip_address = true
-  user_data = "${file("init.sh")}"
+  user_data                   = file("jenkinsinit.sh")
 
   tags = {
     Terraform   = "true"
     Environment = "dev"
-    Name = "Flask-App"
+    Name        = "Jenkins"
   }
 }
+ 
